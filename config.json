@@ -1,0 +1,39 @@
+{
+  "excel": {
+    "file_path": "e:\\Advanta\\template_chemical_trans.xlsx",
+    "sheet_name": "Sheet1",
+    "header_row": 1,
+    "id_column": "ID"
+  },
+  "mysql": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "password": "rootpassword",
+    "database": "sync"
+  },
+  "table": {
+    "name": "chemical_trans_detail",
+    "id_column": "id"
+  },
+  "api": {
+    "enabled": true,
+    "url": "https://moteam-monitoring.com/api/chemical-transaction/flat",
+    "timeout_sec": 30,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "field_map": {
+      "chemical_trans_bulan": "bulan",
+      "chemical_trans_detail_chemical": "chemical_code",
+      "chemical_trans_detail_jumlah": "qty",
+      "chemical_trans_detail_chemical_nama": "chemical_name",
+      "chemical_trans_region": "region",
+      "chemical_trans_tahun": "tahun"
+    },
+    "defaults": {
+      "chemical_trans_region": "1"
+    }
+  },
+  "log_file": "sync_log.txt"
+}

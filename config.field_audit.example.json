@@ -1,0 +1,27 @@
+{
+  "excel": {
+    "file_path": "e:\\Advanta\\field_audit.xlsx",
+    "sheet_name": "Sheet1",
+    "header_row": 1
+  },
+  "mysql": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "password": "rootpassword",
+    "database": "db_monitoring_prod"
+  },
+  "table": {
+    "name": "field_audit",
+    "id_column": "id",
+    "unique_columns": [ "field_number"],
+    "update_existing": true,
+    "auto_map_columns": true,
+    "insert_exclude_columns": ["id", "created_at", "updated_at"],
+    "field_map": {}
+  },
+  "api": {
+    "enabled": false
+  },
+  "log_file": "sync_log.txt"
+}
