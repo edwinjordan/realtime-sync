@@ -1,3 +1,5 @@
+import datetime
+import decimal
 import importlib.util
 import unittest
 from pathlib import Path
@@ -106,6 +108,185 @@ class SyncFieldAuditFromExcelTests(unittest.TestCase):
             api.SYNC_LOCK.release()
 
         self.assertEqual(raised.exception.status_code, 409)
+
+
+class VegetativePhaseApiTests(unittest.TestCase):
+    def setUp(self):
+        self.original_mysql_config = api.MYSQL_CONFIG
+        self.original_table_name = api.TABLE_NAME
+        api.MYSQL_CONFIG = {"database": "test"}
+        api.TABLE_NAME = "field_audit"
+
+    def tearDown(self):
+        api.MYSQL_CONFIG = self.original_mysql_config
+        api.TABLE_NAME = self.original_table_name
+
+    def test_format_vegetative_row_contains_all_50_keys_in_order(self):
+        sample_db_row = {
+            "season": "DS26",
+            "type_corn": "Field Corn",
+            "field_number": "DC6715080",
+            "farmer_name": "pak mashud tebu",
+            "grower": "Fitrianingsasi",
+            "hybrid": "AX09",
+            "actual_area_planted": decimal.Decimal("0.16"),
+            "discard_area_ha": decimal.Decimal("0.00"),
+            "effective_area_ha": decimal.Decimal("0.16"),
+            "previous_crop_corn": "Not Corn",
+            "planting_ratio": "04:02:00",
+            "planting_space": "60x18",
+            "split_planting": "-3,0,0",
+            "female_planting_date_actual": datetime.date(2026, 4, 24),
+            "hamlet": None,
+            "village": None,
+            "sub_district": None,
+            "district": None,
+            "province": None,
+            "flagging_final": "GF",
+            "field_assistant": "Chairunnisa Faza Nabillah",
+            "supervisor": "Alfian Dwi Purnomo",
+            "manager": "Anggi Yanuar Yanto",
+            "region": "Region 3",
+            "corr_tagging": "-7.992958,112.747986",
+            "qa_spv": "Tonny Andhi Jaya",
+            "qa_fi": "David Billy Jepryanto",
+            "co_detasseling": "Nisa jep",
+            "audit_date": datetime.date(2026, 5, 18),
+            "audit_week": "21.0",
+            "field_size_ha": decimal.Decimal("0.16"),
+            "male_split": "Yes",
+            "sowing_ratio": "05:02:00",
+            "split_field": "No",
+            "previous_crop": "Not Corn",
+            "one_seed_hole": "Yes",
+            "isolation_problem": "No",
+            "crop_uniformity": "Fair",
+            "crop_health": "Poor",
+            "roguing_status": "On Going",
+            "lsv_status": "Moderate",
+            "offtype_m": "0.0",
+            "offtype_f": ">0",
+            "poi_accuracy": "Not Valid",
+            "rev_planting_date": datetime.date(2026, 4, 24),
+            "decision": "Pass with Note",
+            "action_needed": "Roguing",
+            "pld_reason": None,
+            "flagging": "GF",
+            "remarks": "-",
+            # extra non-vegetative columns in table:
+            "gen1_audit_date": datetime.date(2026, 6, 24),
+            "harvested_area_ha": decimal.Decimal("0.16"),
+        }
+
+        formatted = api.format_vegetative_row(sample_db_row)
+        self.assertEqual(len(formatted), 50)
+        self.assertEqual(list(formatted.keys()), api.VEGETATIVE_COLUMNS)
+        self.assertEqual(formatted["actual_area_planted"], 0.16)
+        self.assertEqual(formatted["discard_area_ha"], 0)
+        self.assertEqual(formatted["female_planting_date_actual"], "2026-04-24")
+        self.assertEqual(formatted["remarks"], "-")
+        self.assertNotIn("gen1_audit_date", formatted)
+        self.assertNotIn("harvested_area_ha", formatted)
+
+    def test_list_vegetative_queries_and_formats(self):
+        mock_raw = [{
+            "season": "DS26",
+            "type_corn": "Field Corn",
+            "field_number": "DC6715080",
+            "farmer_name": "pak mashud tebu",
+            "grower": "Fitrianingsasi",
+            "hybrid": "AX09",
+            "actual_area_planted": decimal.Decimal("0.16"),
+            "discard_area_ha": decimal.Decimal("0.00"),
+            "effective_area_ha": decimal.Decimal("0.16"),
+            "previous_crop_corn": "Not Corn",
+            "planting_ratio": "04:02:00",
+            "planting_space": "60x18",
+            "split_planting": "-3,0,0",
+            "female_planting_date_actual": datetime.date(2026, 4, 24),
+            "hamlet": None,
+            "village": None,
+            "sub_district": None,
+            "district": None,
+            "province": None,
+            "flagging_final": "GF",
+            "field_assistant": "Chairunnisa Faza Nabillah",
+            "supervisor": "Alfian Dwi Purnomo",
+            "manager": "Anggi Yanuar Yanto",
+            "region": "Region 3",
+            "corr_tagging": "-7.992958,112.747986",
+            "qa_spv": "Tonny Andhi Jaya",
+            "qa_fi": "David Billy Jepryanto",
+            "co_detasseling": "Nisa jep",
+            "audit_date": datetime.date(2026, 5, 18),
+            "audit_week": "21.0",
+            "field_size_ha": decimal.Decimal("0.16"),
+            "male_split": "Yes",
+            "sowing_ratio": "05:02:00",
+            "split_field": "No",
+            "previous_crop": "Not Corn",
+            "one_seed_hole": "Yes",
+            "isolation_problem": "No",
+            "crop_uniformity": "Fair",
+            "crop_health": "Poor",
+            "roguing_status": "On Going",
+            "lsv_status": "Moderate",
+            "offtype_m": "0.0",
+            "offtype_f": ">0",
+            "poi_accuracy": "Not Valid",
+            "rev_planting_date": datetime.date(2026, 4, 24),
+            "decision": "Pass with Note",
+            "action_needed": "Roguing",
+            "pld_reason": None,
+            "flagging": "GF",
+            "remarks": "-",
+        }]
+
+        def fake_run_query(sql, values=(), fetch_one=False):
+            if "COUNT(*)" in sql:
+                return {"total": 1}
+            return mock_raw
+
+        with patch.object(api, "run_query", side_effect=fake_run_query):
+            res = api.list_field_audit_vegetative(field_number="DC6715080")
+
+        self.assertEqual(res["total"], 1)
+        self.assertEqual(len(res["items"]), 1)
+        self.assertEqual(res["items"][0]["field_number"], "DC6715080")
+        self.assertEqual(len(res["items"][0]), 50)
+
+    def test_get_vegetative_by_field_number_and_id(self):
+        mock_row = {col: None for col in api.VEGETATIVE_COLUMNS}
+        mock_row["field_number"] = "DC6715080"
+        mock_row["season"] = "DS26"
+
+        with patch.object(api, "run_query", return_value=mock_row) as mock_query:
+            result = api.get_field_audit_vegetative("DC6715080")
+            self.assertEqual(result["field_number"], "DC6715080")
+            self.assertIn("WHERE `field_number` = %s", mock_query.call_args[0][0])
+
+        with patch.object(api, "run_query", return_value=mock_row) as mock_query:
+            result = api.get_field_audit_vegetative("18855")
+            self.assertEqual(result["field_number"], "DC6715080")
+            self.assertIn("WHERE `id` = %s", mock_query.call_args[0][0])
+
+    def test_get_vegetative_not_found_raises_404(self):
+        with patch.object(api, "run_query", return_value=None):
+            with self.assertRaises(HTTPException) as ctx:
+                api.get_field_audit_vegetative("NON_EXISTING")
+            self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_list_field_audit_with_phase_delegates_to_vegetative(self):
+        with patch.object(api, "query_vegetative_items", return_value={"items": [], "total": 0, "limit": 100, "offset": 0}) as mock_veg:
+            res = api.list_field_audit(phase="vegetative")
+            mock_veg.assert_called_once()
+            self.assertEqual(res["total"], 0)
+
+    def test_get_field_audit_with_phase_delegates_to_vegetative(self):
+        with patch.object(api, "fetch_field_audit_vegetative", return_value={"field_number": "F-01"}) as mock_fetch:
+            res = api.get_field_audit(123, phase="fase-vegetative")
+            mock_fetch.assert_called_once_with("123")
+            self.assertEqual(res["field_number"], "F-01")
 
 
 if __name__ == "__main__":

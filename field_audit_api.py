@@ -17,6 +17,7 @@ from fastapi.security import APIKeyHeader
 from mysql.connector import Error as MySQLError
 
 import sync_excel_to_mysql as sync_service
+import vegetative_api
 
 DEFAULT_CONFIG = Path(__file__).parent / "config.field_audit.example.json"
 MYSQL_CONFIG = None
@@ -25,6 +26,15 @@ UNIQUE_COLUMNS = []
 EXCEL_CONFIG = None
 TABLE_CONFIG = None
 SYNC_LOCK = Lock()
+
+# Re-export vegetative API components for backward compatibility
+VEGETATIVE_COLUMNS = vegetative_api.VEGETATIVE_COLUMNS
+format_vegetative_row = vegetative_api.format_vegetative_row
+normalize_pagination = vegetative_api.normalize_pagination
+query_vegetative_items = vegetative_api.query_vegetative_items
+fetch_field_audit_vegetative = vegetative_api.fetch_field_audit_vegetative
+list_field_audit_vegetative = vegetative_api.list_field_audit_vegetative
+get_field_audit_vegetative = vegetative_api.get_field_audit_vegetative
 
 app = FastAPI(title="Field Audit API", version="1.1.0")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -146,6 +156,16 @@ def sync_excel_to_database():
     }
 
 
+# Wire vegetative_api with database query executor and table name getter
+vegetative_api.init_vegetative_api(
+    run_query_fn=lambda *args, **kwargs: run_query(*args, **kwargs),
+    get_table_name_fn=lambda: TABLE_NAME,
+)
+
+# Include Vegetative Phase router with authentication dependency
+app.include_router(vegetative_api.router, dependencies=[Depends(require_api_key)])
+
+
 @app.post("/api/field-audit", dependencies=[Depends(require_api_key)])
 def sync_field_audit_from_excel():
     if not SYNC_LOCK.acquire(blocking=False):
@@ -168,7 +188,21 @@ def list_field_audit(
     season: str | None = None,
     field_number: str | None = None,
     farmer_name: str | None = None,
+    phase: str | None = Query(default=None, description="Filter output schema by phase, e.g. 'vegetative' or 'fase-vegetative'"),
+    fase: str | None = Query(default=None, description="Alias untuk parameter phase"),
 ):
+    selected_phase = (phase or fase or "").lower().replace("_", "-")
+    if selected_phase in ("vegetative", "fase-vegetative"):
+        return query_vegetative_items(
+            limit=limit,
+            offset=offset,
+            filters_dict={
+                "season": season,
+                "field_number": field_number,
+                "farmer_name": farmer_name,
+            },
+        )
+
     filters = []
     values = []
     for column, value in (
@@ -181,19 +215,28 @@ def list_field_audit(
             values.append(value)
 
     where_clause = f" WHERE {' AND '.join(filters)}" if filters else ""
+    limit_val, offset_val = normalize_pagination(limit, offset)
     table = f"`{TABLE_NAME}`"
     total_rows = run_query(
         f"SELECT COUNT(*) AS total FROM {table}{where_clause}", tuple(values), fetch_one=True
     )
     items = run_query(
         f"SELECT * FROM {table}{where_clause} ORDER BY `id` DESC LIMIT %s OFFSET %s",
-        tuple(values + [limit, offset]),
+        tuple(values + [limit_val, offset_val]),
     )
-    return {"items": items, "total": total_rows["total"], "limit": limit, "offset": offset}
+    return {"items": items, "total": total_rows["total"], "limit": limit_val, "offset": offset_val}
 
 
 @app.get("/api/field-audit/{row_id}", dependencies=[Depends(require_api_key)])
-def get_field_audit(row_id: int):
+def get_field_audit(
+    row_id: int,
+    phase: str | None = Query(default=None, description="Filter output schema by phase, e.g. 'vegetative' or 'fase-vegetative'"),
+    fase: str | None = Query(default=None, description="Alias untuk parameter phase"),
+):
+    selected_phase = (phase or fase or "").lower().replace("_", "-")
+    if selected_phase in ("vegetative", "fase-vegetative"):
+        return fetch_field_audit_vegetative(str(row_id))
+
     row = run_query(
         f"SELECT * FROM `{TABLE_NAME}` WHERE `id` = %s LIMIT 1",
         (row_id,),
