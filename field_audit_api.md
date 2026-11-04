@@ -136,6 +136,113 @@ curl http://127.0.0.1:8000/api/field-audit/123
 
 Respons sukses adalah satu objek yang berisi semua kolom tabel. Jika ID tidak ditemukan, API merespons `404 Not Found`.
 
+### Data Fase Vegetative
+
+```http
+GET /api/field-audit/vegetative
+GET /api/field-audit/fase-vegetative
+```
+
+Endpoint ini khusus mengembalikan 50 kolom audit pada fase vegetatif tanaman jagung (tanpa kolom generasi, pra-panen, dan panen).
+
+Parameter query:
+
+| Parameter | Tipe | Default | Batas / perilaku |
+|---|---|---:|---|
+| `limit` | integer | `100` | 1 sampai 500 |
+| `offset` | integer | `0` | 0 atau lebih |
+| `season` | string | tidak ada | Filter sama persis pada kolom `season` |
+| `field_number` | string | tidak ada | Filter sama persis pada kolom `field_number` |
+| `farmer_name` | string | tidak ada | Filter sama persis pada kolom `farmer_name` |
+
+Alternatif: Anda juga dapat menambahkan parameter `phase=vegetative` pada endpoint utama:
+`GET /api/field-audit?phase=vegetative`
+
+Contoh URL:
+```text
+http://127.0.0.1:8000/api/field-audit/vegetative?limit=50&field_number=DC6715080
+```
+
+Contoh cURL:
+```bash
+curl "http://127.0.0.1:8000/api/field-audit/vegetative?field_number=DC6715080"
+```
+
+Contoh PowerShell:
+```powershell
+Invoke-RestMethod 'http://127.0.0.1:8000/api/field-audit/vegetative?field_number=DC6715080'
+```
+
+### Ambil Satu Data Fase Vegetative
+
+```http
+GET /api/field-audit/vegetative/{identifier}
+GET /api/field-audit/fase-vegetative/{identifier}
+```
+
+Parameter `{identifier}` dapat berupa ID baris database (`18855`) atau nomor field (`DC6715080`). Alternatif: `GET /api/field-audit/{id}?phase=vegetative`.
+
+Contoh cURL:
+```bash
+curl "http://127.0.0.1:8000/api/field-audit/vegetative/DC6715080"
+```
+
+Contoh respons `200 OK` (Schema Fase Vegetative):
+```json
+{
+  "season": "DS26",
+  "type_corn": "Field Corn",
+  "field_number": "DC6715080",
+  "farmer_name": "pak mashud tebu",
+  "grower": "Fitrianingsasi",
+  "hybrid": "AX09",
+  "actual_area_planted": 0.16,
+  "discard_area_ha": 0,
+  "effective_area_ha": 0.16,
+  "previous_crop_corn": "Not Corn",
+  "planting_ratio": "04:02:00",
+  "planting_space": "60x18",
+  "split_planting": "-3,0,0",
+  "female_planting_date_actual": "2026-04-24",
+  "hamlet": null,
+  "village": null,
+  "sub_district": null,
+  "district": null,
+  "province": null,
+  "flagging_final": "GF",
+  "field_assistant": "Chairunnisa Faza Nabillah",
+  "supervisor": "Alfian Dwi Purnomo",
+  "manager": "Anggi Yanuar Yanto",
+  "region": "Region 3",
+  "corr_tagging": "-7.992958,112.747986",
+  "qa_spv": "Tonny Andhi Jaya",
+  "qa_fi": "David Billy Jepryanto",
+  "co_detasseling": "Nisa jep",
+  "audit_date": "2026-05-18",
+  "audit_week": "21.0",
+  "field_size_ha": 0.16,
+  "male_split": "Yes",
+  "sowing_ratio": "05:02:00",
+  "split_field": "No",
+  "previous_crop": "Not Corn",
+  "one_seed_hole": "Yes",
+  "isolation_problem": "No",
+  "crop_uniformity": "Fair",
+  "crop_health": "Poor",
+  "roguing_status": "On Going",
+  "lsv_status": "Moderate",
+  "offtype_m": "0.0",
+  "offtype_f": ">0",
+  "poi_accuracy": "Not Valid",
+  "rev_planting_date": "2026-04-24",
+  "decision": "Pass with Note",
+  "action_needed": "Roguing",
+  "pld_reason": null,
+  "flagging": "GF",
+  "remarks": "-"
+}
+```
+
 ### Sinkronkan Excel ke MySQL
 
 ```http

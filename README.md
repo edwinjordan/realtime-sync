@@ -92,7 +92,9 @@ Panduan lengkap endpoint, request, response, dan akses jaringan ada di
 
 - `GET /api/field-audit?limit=100&offset=0` mengambil data berhalaman.
 - Filter opsional: `season`, `field_number`, dan `farmer_name`.
-- `GET /api/field-audit/{id}` mengambil satu baris berdasarkan ID.
+- `GET /api/field-audit/vegetative` (atau alias `/api/field-audit/fase-vegetative`) mengambil data 50 kolom khusus fase vegetatif.
+- `GET /api/field-audit/vegetative/{id_atau_field_number}` mengambil satu data fase vegetatif.
+- `GET /api/field-audit/{id}` mengambil satu baris berdasarkan ID (semua kolom).
 - `POST /api/field-audit` membaca Excel dari konfigurasi dan menyinkronkan baris baru ke MySQL (tanpa body JSON).
 - `GET /health` mengecek bahwa API aktif.
 
