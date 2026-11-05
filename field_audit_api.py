@@ -18,6 +18,9 @@ from mysql.connector import Error as MySQLError
 
 import sync_excel_to_mysql as sync_service
 import vegetative_api
+import generative_api
+import pre_harvest_api
+import harvest_api
 
 DEFAULT_CONFIG = Path(__file__).parent / "config.field_audit.example.json"
 MYSQL_CONFIG = None
@@ -35,6 +38,30 @@ query_vegetative_items = vegetative_api.query_vegetative_items
 fetch_field_audit_vegetative = vegetative_api.fetch_field_audit_vegetative
 list_field_audit_vegetative = vegetative_api.list_field_audit_vegetative
 get_field_audit_vegetative = vegetative_api.get_field_audit_vegetative
+
+# Re-export generative API components for backward compatibility
+GENERATIVE_COLUMNS = generative_api.GENERATIVE_COLUMNS
+format_generative_row = generative_api.format_generative_row
+query_generative_items = generative_api.query_generative_items
+fetch_field_audit_generative = generative_api.fetch_field_audit_generative
+list_field_audit_generative = generative_api.list_field_audit_generative
+get_field_audit_generative = generative_api.get_field_audit_generative
+
+# Re-export preharvest API components for backward compatibility
+PREHARVEST_COLUMNS = pre_harvest_api.PREHARVEST_COLUMNS
+format_preharvest_row = pre_harvest_api.format_preharvest_row
+query_preharvest_items = pre_harvest_api.query_preharvest_items
+fetch_field_audit_preharvest = pre_harvest_api.fetch_field_audit_preharvest
+list_field_audit_preharvest = pre_harvest_api.list_field_audit_preharvest
+get_field_audit_preharvest = pre_harvest_api.get_field_audit_preharvest
+
+# Re-export harvest API components for backward compatibility
+HARVEST_COLUMNS = harvest_api.HARVEST_COLUMNS
+format_harvest_row = harvest_api.format_harvest_row
+query_harvest_items = harvest_api.query_harvest_items
+fetch_field_audit_harvest = harvest_api.fetch_field_audit_harvest
+list_field_audit_harvest = harvest_api.list_field_audit_harvest
+get_field_audit_harvest = harvest_api.get_field_audit_harvest
 
 app = FastAPI(title="Field Audit API", version="1.1.0")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -165,6 +192,33 @@ vegetative_api.init_vegetative_api(
 # Include Vegetative Phase router with authentication dependency
 app.include_router(vegetative_api.router, dependencies=[Depends(require_api_key)])
 
+# Wire generative_api with database query executor and table name getter
+generative_api.init_generative_api(
+    run_query_fn=lambda *args, **kwargs: run_query(*args, **kwargs),
+    get_table_name_fn=lambda: TABLE_NAME,
+)
+
+# Include Generative Phase router with authentication dependency
+app.include_router(generative_api.router, dependencies=[Depends(require_api_key)])
+
+# Wire preharvest_api with database query executor and table name getter
+pre_harvest_api.init_preharvest_api(
+    run_query_fn=lambda *args, **kwargs: run_query(*args, **kwargs),
+    get_table_name_fn=lambda: TABLE_NAME,
+)
+
+# Include Preharvest Phase router with authentication dependency
+app.include_router(pre_harvest_api.router, dependencies=[Depends(require_api_key)])
+
+# Wire harvest_api with database query executor and table name getter
+harvest_api.init_harvest_api(
+    run_query_fn=lambda *args, **kwargs: run_query(*args, **kwargs),
+    get_table_name_fn=lambda: TABLE_NAME,
+)
+
+# Include Harvest Phase router with authentication dependency
+app.include_router(harvest_api.router, dependencies=[Depends(require_api_key)])
+
 
 @app.post("/api/field-audit", dependencies=[Depends(require_api_key)])
 def sync_field_audit_from_excel():
@@ -202,6 +256,38 @@ def list_field_audit(
                 "farmer_name": farmer_name,
             },
         )
+    if selected_phase in ("generative", "fase-generative"):
+        return query_generative_items(
+            limit=limit,
+            offset=offset,
+            filters_dict={
+                "season": season,
+                "field_number": field_number,
+                "farmer_name": farmer_name,
+            },
+        )
+
+    if selected_phase in ("preharvest", "fase-preharvest"):
+        return query_preharvest_items(
+            limit=limit,
+            offset=offset,
+            filters_dict={
+                "season": season,
+                "field_number": field_number,
+                "farmer_name": farmer_name,
+            },
+        )    
+
+    if selected_phase in ("harvest", "fase-harvest"):
+            return query_harvest_items(
+                limit=limit,
+                offset=offset,
+                filters_dict={
+                    "season": season,
+                    "field_number": field_number,
+                    "farmer_name": farmer_name,
+                },
+            )    
 
     filters = []
     values = []
@@ -227,7 +313,7 @@ def list_field_audit(
     return {"items": items, "total": total_rows["total"], "limit": limit_val, "offset": offset_val}
 
 
-@app.get("/api/field-audit/{row_id}", dependencies=[Depends(require_api_key)])
+@app.get("/api/field-audit/{row_id:int}", dependencies=[Depends(require_api_key)])
 def get_field_audit(
     row_id: int,
     phase: str | None = Query(default=None, description="Filter output schema by phase, e.g. 'vegetative' or 'fase-vegetative'"),
@@ -236,6 +322,12 @@ def get_field_audit(
     selected_phase = (phase or fase or "").lower().replace("_", "-")
     if selected_phase in ("vegetative", "fase-vegetative"):
         return fetch_field_audit_vegetative(str(row_id))
+    if selected_phase in ("generative", "fase-generative"):
+        return fetch_field_audit_generative(str(row_id))
+    if selected_phase in ("preharvest", "fase-preharvest"):
+        return fetch_field_audit_preharvest(str(row_id))
+    if selected_phase in ("harvest", "fase-harvest"):
+        return fetch_field_audit_harvest(str(row_id))
 
     row = run_query(
         f"SELECT * FROM `{TABLE_NAME}` WHERE `id` = %s LIMIT 1",
