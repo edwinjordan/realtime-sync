@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from starlette.routing import Match
 
 module_path = Path(__file__).resolve().parents[1] / "field_audit_api.py"
 spec = importlib.util.spec_from_file_location("field_audit_api", module_path)
@@ -287,6 +288,29 @@ class VegetativePhaseApiTests(unittest.TestCase):
             res = api.get_field_audit(123, phase="fase-vegetative")
             mock_fetch.assert_called_once_with("123")
             self.assertEqual(res["field_number"], "F-01")
+
+
+class FieldAuditRouteTests(unittest.TestCase):
+    def test_row_id_route_only_matches_integer_paths(self):
+        route = next(
+            route
+            for route in api.app.routes
+            if getattr(route, "endpoint", None) is api.get_field_audit
+        )
+
+        def match(path):
+            return route.matches(
+                {
+                    "type": "http",
+                    "path": path,
+                    "method": "GET",
+                    "root_path": "",
+                    "headers": [],
+                }
+            )[0]
+
+        self.assertEqual(match("/api/field-audit/preharvest"), Match.NONE)
+        self.assertEqual(match("/api/field-audit/123"), Match.FULL)
 
 
 if __name__ == "__main__":

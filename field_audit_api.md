@@ -243,6 +243,22 @@ Contoh respons `200 OK` (Schema Fase Vegetative):
 }
 ```
 
+### Data Fase Pra-Panen
+
+```http
+GET /api/field-audit/preharvest
+GET /api/field-audit/fase-preharvest
+```
+
+Endpoint ini menerima parameter pagination dan filter yang sama dengan daftar
+data utama. Alternatif: `GET /api/field-audit?phase=preharvest`.
+
+Contoh:
+
+```text
+http://127.0.0.1:8000/api/field-audit/preharvest?limit=50&offset=0
+```
+
 ### Sinkronkan Excel ke MySQL
 
 ```http
