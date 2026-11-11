@@ -1978,3 +1978,5 @@
 2026-11-04 14:33:27,693 [INFO] Fitur API sinkronisasi dinonaktifkan pada config
 2026-11-04 14:33:27,694 [INFO] === Selesai ===
 
+2026-11-05 16:48:45,836 [INFO] === Mulai sinkronisasi Excel -> MySQL ===
+2026-11-05 16:48:47,702 [INFO] Jumlah baris terbaca dari Excel: 999

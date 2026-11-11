@@ -23,7 +23,7 @@ class SyncFieldAuditFromExcelTests(unittest.TestCase):
         api.EXCEL_CONFIG = {"file_path": "field_audit.xlsx", "sheet_name": "Sheet1"}
         api.MYSQL_CONFIG = {"database": "test"}
         api.TABLE_CONFIG = {
-            "name": "field_audit",
+            "name": "field_audits",
             "update_existing": True,
             "insert_exclude_columns": ["id", "created_at", "updated_at"],
         }
@@ -116,7 +116,7 @@ class VegetativePhaseApiTests(unittest.TestCase):
         self.original_mysql_config = api.MYSQL_CONFIG
         self.original_table_name = api.TABLE_NAME
         api.MYSQL_CONFIG = {"database": "test"}
-        api.TABLE_NAME = "field_audit"
+        api.TABLE_NAME = "field_audits"
 
     def tearDown(self):
         api.MYSQL_CONFIG = self.original_mysql_config
@@ -291,6 +291,44 @@ class VegetativePhaseApiTests(unittest.TestCase):
 
 
 class FieldAuditRouteTests(unittest.TestCase):
+    def test_main_list_query_uses_requested_order(self):
+        original_table_name = api.TABLE_NAME
+        api.TABLE_NAME = "field_audits"
+        try:
+            with patch.object(
+                api,
+                "run_query",
+                side_effect=[{"total": 0}, []],
+            ) as run_query:
+                api.list_field_audit(
+                    limit=10,
+                    offset=0,
+                    phase=None,
+                    fase=None,
+                    order_by="season",
+                    order="asc",
+                )
+        finally:
+            api.TABLE_NAME = original_table_name
+
+        list_sql = run_query.call_args_list[1].args[0]
+        self.assertIn("ORDER BY `season` ASC", list_sql)
+        for call in run_query.call_args_list:
+            self.assertIn("`flagging_final` <> %s", call.args[0])
+            self.assertIn("PLD", call.args[1])
+
+    def test_main_detail_query_excludes_pld_rows(self):
+        original_table_name = api.TABLE_NAME
+        api.TABLE_NAME = "field_audits"
+        try:
+            with patch.object(api, "run_query", return_value={"id": 123}) as run_query:
+                api.get_field_audit(123, phase=None, fase=None)
+        finally:
+            api.TABLE_NAME = original_table_name
+
+        self.assertIn("`flagging_final` <> %s", run_query.call_args.args[0])
+        self.assertEqual(run_query.call_args.args[1], (123, "PLD"))
+
     def test_row_id_route_only_matches_integer_paths(self):
         route = next(
             route
@@ -311,6 +349,62 @@ class FieldAuditRouteTests(unittest.TestCase):
 
         self.assertEqual(match("/api/field-audit/preharvest"), Match.NONE)
         self.assertEqual(match("/api/field-audit/123"), Match.FULL)
+
+
+class WindowsEventLoopPolicyTests(unittest.TestCase):
+    @unittest.skipUnless(api.os.name == "nt", "Windows event loop policy is Windows-only")
+    def test_api_uses_selector_event_loop_policy_on_windows(self):
+        api._configure_windows_event_loop_policy()
+
+        self.assertIsInstance(
+            api.asyncio.get_event_loop_policy(),
+            api.asyncio.WindowsSelectorEventLoopPolicy,
+        )
+        loop = api.asyncio.new_event_loop()
+        try:
+            self.assertIsInstance(loop, api.asyncio.SelectorEventLoop)
+        finally:
+            loop.close()
+
+    def test_lifespan_suppresses_only_expected_proactor_reset(self):
+        async def verify_exception_handler():
+            loop = api.asyncio.get_running_loop()
+            delegated_contexts = []
+            previous_handler = lambda event_loop, context: delegated_contexts.append(
+                (event_loop, context)
+            )
+            loop.set_exception_handler(previous_handler)
+
+            async with api.app.router.lifespan_context(api.app):
+                handler = loop.get_exception_handler()
+                self.assertIsNotNone(handler)
+
+                expected_context = {
+                    "message": api._PROACTOR_CONNECTION_LOST_MESSAGE,
+                    "exception": ConnectionResetError(10054, "connection reset"),
+                }
+                handler(loop, expected_context)
+                self.assertEqual(delegated_contexts, [])
+
+                unexpected_context = {
+                    "message": "another callback failed",
+                    "exception": ConnectionResetError(10054, "connection reset"),
+                }
+                handler(loop, unexpected_context)
+                wrong_exception_context = {
+                    "message": api._PROACTOR_CONNECTION_LOST_MESSAGE,
+                    "exception": RuntimeError("unexpected exception type"),
+                }
+                handler(loop, wrong_exception_context)
+                self.assertEqual(
+                    delegated_contexts,
+                    [(loop, unexpected_context), (loop, wrong_exception_context)],
+                )
+
+            self.assertIs(loop.get_exception_handler(), previous_handler)
+            loop.set_exception_handler(None)
+
+        api.asyncio.run(verify_exception_handler())
 
 
 if __name__ == "__main__":

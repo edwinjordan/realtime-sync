@@ -37,6 +37,13 @@ Opsi command line:
 
 Host dan port juga dapat diset dengan environment variable `FIELD_AUDIT_API_HOST` dan `FIELD_AUDIT_API_PORT`. Argumen command line akan mengesampingkan nilai environment.
 
+Pada Windows, API menggunakan Selector event loop. Jika server berjalan dengan
+Proactor, API hanya mengabaikan `ConnectionResetError` WinError 10054 dari
+callback penutupan koneksi Proactor yang sudah dikenal; exception lainnya
+tetap dilaporkan. Hal ini tidak mengubah response endpoint. Selector tidak
+mendukung asyncio subprocess dan memiliki batas jumlah socket yang lebih
+rendah.
+
 ## Endpoint
 
 ### Cek kesehatan
@@ -70,13 +77,19 @@ Parameter query:
 | `season` | string | tidak ada | Filter sama persis pada kolom `season` |
 | `field_number` | string | tidak ada | Filter sama persis pada kolom `field_number` |
 | `farmer_name` | string | tidak ada | Filter sama persis pada kolom `farmer_name` |
+| `order_by` | string | `id` | Kolom pengurutan; hanya huruf, angka, dan underscore |
+| `order` | string | `desc` | Arah pengurutan: `asc` atau `desc` |
 
-Filter dapat digabung; semua filter yang diberikan harus cocok. Data diurutkan dengan `id` terbaru lebih dulu.
+Filter dapat digabung; semua filter yang diberikan harus cocok. Pengurutan
+default menggunakan `id` terbaru lebih dulu. Parameter `order_by` dan `order`
+juga tersedia pada semua endpoint daftar data fase.
+Semua endpoint data mengecualikan baris dengan `flagging_final = 'PLD'`,
+termasuk endpoint untuk mengambil satu baris.
 
 Contoh URL:
 
 ```text
-http://127.0.0.1:8000/api/field-audit?limit=50&offset=0&season=2026&field_number=F-001
+http://127.0.0.1:8000/api/field-audit?limit=50&offset=0&season=2026&field_number=F-001&order_by=season&order=asc
 ```
 
 Contoh request PowerShell:
@@ -157,6 +170,9 @@ Parameter query:
 
 Alternatif: Anda juga dapat menambahkan parameter `phase=vegetative` pada endpoint utama:
 `GET /api/field-audit?phase=vegetative`
+
+Sorting juga dapat dipakai pada endpoint daftar fase, misalnya:
+`GET /api/field-audit/fase-preharvest?order_by=pre_harvest_audit_date&order=asc`.
 
 Contoh URL:
 ```text
@@ -253,10 +269,20 @@ GET /api/field-audit/fase-preharvest
 Endpoint ini menerima parameter pagination dan filter yang sama dengan daftar
 data utama. Alternatif: `GET /api/field-audit?phase=preharvest`.
 
+Untuk hanya mengambil data yang sudah memiliki tanggal audit pre-harvest,
+gunakan parameter `pre_harvest_audit_date_not_null=true`. Secara default,
+parameter ini bernilai `false` dan data dengan tanggal kosong tetap disertakan.
+
 Contoh:
 
 ```text
 http://127.0.0.1:8000/api/field-audit/preharvest?limit=50&offset=0
+```
+
+Contoh hanya dengan tanggal audit yang tidak `NULL`:
+
+```text
+http://127.0.0.1:8000/api/field-audit/preharvest?pre_harvest_audit_date_not_null=true
 ```
 
 ### Sinkronkan Excel ke MySQL
