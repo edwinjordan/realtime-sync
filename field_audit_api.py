@@ -1,14 +1,17 @@
 """HTTP API for reading and inserting rows in the configured field_audit table."""
 
 import argparse
+import asyncio
 import hmac
 import ipaddress
 import json
 import logging
 import os
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 from threading import Lock
+from typing import Any, AsyncIterator
 
 import mysql.connector
 import uvicorn
@@ -17,6 +20,11 @@ from fastapi.security import APIKeyHeader
 from mysql.connector import Error as MySQLError
 
 import sync_excel_to_mysql as sync_service
+from api_query_utils import (
+    NON_PLD_FLAGGING_FILTER,
+    PLD_FLAGGING_VALUE,
+    build_order_clause,
+)
 import vegetative_api
 import generative_api
 import pre_harvest_api
@@ -63,7 +71,45 @@ fetch_field_audit_harvest = harvest_api.fetch_field_audit_harvest
 list_field_audit_harvest = harvest_api.list_field_audit_harvest
 get_field_audit_harvest = harvest_api.get_field_audit_harvest
 
-app = FastAPI(title="Field Audit API", version="1.1.0")
+_PROACTOR_CONNECTION_LOST_MESSAGE = (
+    "Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)"
+)
+
+
+def _is_expected_proactor_connection_reset(context: dict[str, Any]) -> bool:
+    exception = context.get("exception")
+    if not isinstance(exception, ConnectionResetError):
+        return False
+    if context.get("message") != _PROACTOR_CONNECTION_LOST_MESSAGE:
+        return False
+    return getattr(exception, "winerror", None) == 10054 or (
+        bool(exception.args) and exception.args[0] == 10054
+    )
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+
+    def handle_loop_exception(
+        event_loop: asyncio.AbstractEventLoop, context: dict[str, Any]
+    ) -> None:
+        if _is_expected_proactor_connection_reset(context):
+            return
+        if previous_handler is not None:
+            previous_handler(event_loop, context)
+        else:
+            event_loop.default_exception_handler(context)
+
+    loop.set_exception_handler(handle_loop_exception)
+    try:
+        yield
+    finally:
+        loop.set_exception_handler(previous_handler)
+
+
+app = FastAPI(title="Field Audit API", version="1.1.0", lifespan=lifespan)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -239,6 +285,8 @@ def health_check():
 def list_field_audit(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    order_by: str = Query(default="id", description="Kolom untuk pengurutan"),
+    order: str = Query(default="desc", description="Arah pengurutan: asc atau desc"),
     season: str | None = None,
     field_number: str | None = None,
     farmer_name: str | None = None,
@@ -250,6 +298,8 @@ def list_field_audit(
         return query_vegetative_items(
             limit=limit,
             offset=offset,
+            order_by=order_by,
+            order=order,
             filters_dict={
                 "season": season,
                 "field_number": field_number,
@@ -260,6 +310,8 @@ def list_field_audit(
         return query_generative_items(
             limit=limit,
             offset=offset,
+            order_by=order_by,
+            order=order,
             filters_dict={
                 "season": season,
                 "field_number": field_number,
@@ -271,6 +323,8 @@ def list_field_audit(
         return query_preharvest_items(
             limit=limit,
             offset=offset,
+            order_by=order_by,
+            order=order,
             filters_dict={
                 "season": season,
                 "field_number": field_number,
@@ -282,6 +336,8 @@ def list_field_audit(
             return query_harvest_items(
                 limit=limit,
                 offset=offset,
+                order_by=order_by,
+                order=order,
                 filters_dict={
                     "season": season,
                     "field_number": field_number,
@@ -299,15 +355,18 @@ def list_field_audit(
         if value is not None:
             filters.append(f"`{column}` = %s")
             values.append(value)
+    filters.append(NON_PLD_FLAGGING_FILTER)
+    values.append(PLD_FLAGGING_VALUE)
 
     where_clause = f" WHERE {' AND '.join(filters)}" if filters else ""
     limit_val, offset_val = normalize_pagination(limit, offset)
     table = f"`{TABLE_NAME}`"
+    order_clause = build_order_clause(order_by, order)
     total_rows = run_query(
         f"SELECT COUNT(*) AS total FROM {table}{where_clause}", tuple(values), fetch_one=True
     )
     items = run_query(
-        f"SELECT * FROM {table}{where_clause} ORDER BY `id` DESC LIMIT %s OFFSET %s",
+        f"SELECT * FROM {table}{where_clause} {order_clause} LIMIT %s OFFSET %s",
         tuple(values + [limit_val, offset_val]),
     )
     return {"items": items, "total": total_rows["total"], "limit": limit_val, "offset": offset_val}
@@ -330,8 +389,8 @@ def get_field_audit(
         return fetch_field_audit_harvest(str(row_id))
 
     row = run_query(
-        f"SELECT * FROM `{TABLE_NAME}` WHERE `id` = %s LIMIT 1",
-        (row_id,),
+        f"SELECT * FROM `{TABLE_NAME}` WHERE `id` = %s AND {NON_PLD_FLAGGING_FILTER} LIMIT 1",
+        (row_id, PLD_FLAGGING_VALUE),
         fetch_one=True,
     )
     if row is None:
@@ -346,6 +405,11 @@ def is_loopback(host: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
+def _configure_windows_event_loop_policy() -> None:
+    if os.name == "nt":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 def main():
@@ -375,6 +439,7 @@ def main():
     if not is_loopback(args.host) and not api_key:
         parser.error("Set FIELD_AUDIT_API_KEY before binding the API to a network interface")
 
+    _configure_windows_event_loop_policy()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     uvicorn.run(app, host=args.host, port=args.port)
 

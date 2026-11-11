@@ -12,7 +12,7 @@
     "database": "db_monitoring_prod"
   },
   "table": {
-    "name": "field_audit",
+    "name": "field_audits",
     "id_column": "id",
     "unique_columns": [ "field_number"],
     "update_existing": true,

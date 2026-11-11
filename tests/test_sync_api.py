@@ -146,7 +146,7 @@ class UpsertRowsTests(unittest.TestCase):
         with patch.object(sync.mysql.connector, "connect", return_value=connection):
             result = sync.upsert_rows(
                 {"database": "test"},
-                {"name": "field_audit"},
+                {"name": "field_audits"},
                 rows,
                 ["field_number"],
                 {("F-1",)},
@@ -156,10 +156,10 @@ class UpsertRowsTests(unittest.TestCase):
         self.assertTrue(connection.committed)
         update_sql, update_values = connection.cursor_instance.statements[0]
         insert_sql, insert_values = connection.cursor_instance.statements[1]
-        self.assertTrue(update_sql.startswith("UPDATE `field_audit`"))
+        self.assertTrue(update_sql.startswith("UPDATE `field_audits`"))
         self.assertNotIn("`id` =", update_sql)
         self.assertEqual(update_values, ["Updated", "F-1"])
-        self.assertTrue(insert_sql.startswith("INSERT INTO `field_audit`"))
+        self.assertTrue(insert_sql.startswith("INSERT INTO `field_audits`"))
         self.assertEqual(insert_values, ["F-2", "New", None])
 
 

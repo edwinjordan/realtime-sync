@@ -5,6 +5,39 @@ import pre_harvest_api
 
 
 class PreHarvestApiTests(unittest.TestCase):
+    def test_preharvest_query_can_exclude_rows_without_audit_date(self):
+        fake_run_query = MagicMock(
+            side_effect=[
+                {"total": 0},
+                [],
+            ]
+        )
+
+        pre_harvest_api.query_preharvest_items(
+            run_query_fn=fake_run_query,
+            table_name="field_audits",
+            pre_harvest_audit_date_not_null=True,
+        )
+
+        for call in fake_run_query.call_args_list:
+            self.assertIn("`pre_harvest_audit_date` IS NOT NULL", call.args[0])
+
+    def test_preharvest_query_includes_null_audit_dates_by_default(self):
+        fake_run_query = MagicMock(
+            side_effect=[
+                {"total": 0},
+                [],
+            ]
+        )
+
+        pre_harvest_api.query_preharvest_items(
+            run_query_fn=fake_run_query,
+            table_name="field_audits",
+        )
+
+        for call in fake_run_query.call_args_list:
+            self.assertNotIn("`pre_harvest_audit_date` IS NOT NULL", call.args[0])
+
     def test_preharvest_query_selects_distinct_columns(self):
         fake_run_query = MagicMock(
             side_effect=[
@@ -15,7 +48,7 @@ class PreHarvestApiTests(unittest.TestCase):
 
         pre_harvest_api.query_preharvest_items(
             run_query_fn=fake_run_query,
-            table_name="field_audit",
+            table_name="field_audits",
         )
 
         select_sql = fake_run_query.call_args_list[1].args[0]
